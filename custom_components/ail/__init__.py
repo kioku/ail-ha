@@ -73,6 +73,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Assign legacy entries their normalized account identity."""
+    if entry.version == 1:
+        username = str(entry.data.get("username", "")).strip().casefold()
+        hass.config_entries.async_update_entry(
+            entry, unique_id=username or entry.entry_id, version=2
+        )
+    return True
+
+
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)

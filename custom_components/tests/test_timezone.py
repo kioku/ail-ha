@@ -97,14 +97,19 @@ async def test_insert_statistics_uses_utc_start(hass):
         def _capture_stats(_hass, _metadata, statistics):
             captured["stats"] = statistics
 
-        with patch(
-            "custom_components.ail.coordinator.get_last_statistics", return_value={}
-        ), patch(
-            "custom_components.ail.coordinator.get_instance",
-            return_value=_DummyRecorder(),
-        ), patch(
-            "custom_components.ail.coordinator.async_add_external_statistics",
-            new=_capture_stats,
+        with (
+            patch(
+                "custom_components.ail.coordinator.statistics_during_period",
+                return_value={},
+            ),
+            patch(
+                "custom_components.ail.coordinator.get_instance",
+                return_value=_DummyRecorder(),
+            ),
+            patch(
+                "custom_components.ail.coordinator.async_add_external_statistics",
+                new=_capture_stats,
+            ),
         ):
             await coordinator._insert_statistic_type(
                 consumptions,
@@ -140,14 +145,19 @@ async def test_insert_statistics_includes_mean_type_and_unit_class(hass):
         def _capture_stats(_hass, metadata, statistics):
             captured["metadata"] = metadata
 
-        with patch(
-            "custom_components.ail.coordinator.get_last_statistics", return_value={}
-        ), patch(
-            "custom_components.ail.coordinator.get_instance",
-            return_value=_DummyRecorder(),
-        ), patch(
-            "custom_components.ail.coordinator.async_add_external_statistics",
-            new=_capture_stats,
+        with (
+            patch(
+                "custom_components.ail.coordinator.statistics_during_period",
+                return_value={},
+            ),
+            patch(
+                "custom_components.ail.coordinator.get_instance",
+                return_value=_DummyRecorder(),
+            ),
+            patch(
+                "custom_components.ail.coordinator.async_add_external_statistics",
+                new=_capture_stats,
+            ),
         ):
             await coordinator._insert_statistic_type(
                 consumptions,
@@ -186,14 +196,19 @@ async def test_insert_statistics_cost_uses_no_unit_class(hass):
         def _capture_stats(_hass, metadata, statistics):
             captured["metadata"] = metadata
 
-        with patch(
-            "custom_components.ail.coordinator.get_last_statistics", return_value={}
-        ), patch(
-            "custom_components.ail.coordinator.get_instance",
-            return_value=_DummyRecorder(),
-        ), patch(
-            "custom_components.ail.coordinator.async_add_external_statistics",
-            new=_capture_stats,
+        with (
+            patch(
+                "custom_components.ail.coordinator.statistics_during_period",
+                return_value={},
+            ),
+            patch(
+                "custom_components.ail.coordinator.get_instance",
+                return_value=_DummyRecorder(),
+            ),
+            patch(
+                "custom_components.ail.coordinator.async_add_external_statistics",
+                new=_capture_stats,
+            ),
         ):
             await coordinator._insert_statistic_type(
                 consumptions,
