@@ -93,6 +93,45 @@ def test_response_accepts_high_but_valid_consumption():
     assert result.response[0].day == 250
 
 
+def test_response_accepts_empty_provider_placeholder():
+    """A zero-energy row with no readings may mark unavailable old history."""
+    result = parse_response(
+        {
+            "response": [
+                {
+                    "from": "2026-06-01T00:00:00+00:00",
+                    "to": "2026-06-01T00:00:00+00:00",
+                    "day": None,
+                    "night": None,
+                    "isPending": False,
+                    "readingsCount": None,
+                }
+            ]
+        }
+    )
+    assert result.response[0].readings_count is None
+    assert result.response[0].day == 0
+
+
+def test_response_rejects_zero_length_interval_with_energy():
+    """The empty-row exception must never admit consumption data."""
+    with pytest.raises(AILClientError):
+        parse_response(
+            {
+                "response": [
+                    {
+                        "from": "2026-06-01T00:00:00+00:00",
+                        "to": "2026-06-01T00:00:00+00:00",
+                        "day": 1,
+                        "night": 0,
+                        "isPending": False,
+                        "readingsCount": None,
+                    }
+                ]
+            }
+        )
+
+
 def test_appliance_response_parses_estimated_weekly_categories():
     """Parse the subset of the appliance response used by the integration."""
     result = parse_appliance_response(
