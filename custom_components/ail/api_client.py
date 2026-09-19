@@ -97,11 +97,15 @@ class ConsumptionRecord(BaseModel):
 
     @model_validator(mode="after")
     def validate_interval(self) -> "ConsumptionRecord":
+        # AIL represents ranges without meter readings as a zero-energy row
+        # spanning the requested interval.  These rows are filtered before
+        # statistics are created, so permit the provider sentinel while still
+        # rejecting any malformed interval that claims readings or energy.
         if (
-            self.to == self.from_
-            and self.readings_count is None
+            self.readings_count is None
             and self.day == 0
             and self.night == 0
+            and not self.is_pending
         ):
             return self
         if self.to <= self.from_ or self.to - self.from_ > timedelta(days=1):

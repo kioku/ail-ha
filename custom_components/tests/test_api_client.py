@@ -113,6 +113,26 @@ def test_response_accepts_empty_provider_placeholder():
     assert result.response[0].day == 0
 
 
+def test_response_accepts_empty_provider_placeholder_spanning_requested_range():
+    """AIL may use the complete requested range for its no-readings sentinel."""
+    result = parse_response(
+        {
+            "response": [
+                {
+                    "from": "2026-06-01T00:00:00+00:00",
+                    "to": "2026-06-05T00:00:00+00:00",
+                    "day": None,
+                    "night": None,
+                    "isPending": False,
+                    "readingsCount": None,
+                }
+            ]
+        }
+    )
+    assert result.response[0].readings_count is None
+    assert result.response[0].day == 0
+
+
 def test_response_rejects_zero_length_interval_with_energy():
     """The empty-row exception must never admit consumption data."""
     with pytest.raises(AILClientError):
