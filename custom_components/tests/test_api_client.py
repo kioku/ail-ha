@@ -1,6 +1,6 @@
 """Tests for the AIL API client."""
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -195,6 +195,26 @@ async def test_get_consumption_breakdown_uses_appliance_service():
         params={"token": "app-token"},
         headers={"Accept": "application/json"},
     )
+
+
+async def test_get_consumption_data_sends_aware_bounds_as_utc():
+    """Local midnight must not be shifted forward by a provider UTC parse."""
+    client = AILEnergyClient("user@example.com", "secret")
+    client.token = "app-token"
+    client._meter_id = "123"
+    client._request = AsyncMock(return_value=(client.API_URL, b'{"response":[]}'))
+    cest = timezone(timedelta(hours=2))
+
+    await client.get_consumption_data(
+        datetime(2026, 8, 20, 0, 0, tzinfo=cest),
+        datetime(2026, 8, 21, 0, 0, tzinfo=cest),
+    )
+
+    request = client._request.await_args.kwargs["json"]
+    assert request["timeFrame"] == {
+        "from": "2026-08-19 22:00:00",
+        "to": "2026-08-20 22:00:00",
+    }
 
 
 def test_extract_token_from_page_script():

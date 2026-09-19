@@ -7,6 +7,7 @@ CONF_SESSION_STATE = "session_state"
 CONF_FIXED_TARIFF = "fixed_tariff"
 CONF_PEAK_PRICE = "peak_price"
 CONF_OFF_PEAK_PRICE = "off_peak_price"
+CONF_HISTORY_BACKFILL_VERSION = "history_backfill_version"
 
 LEGACY_CONF_FIXED_TARIFF = "Flex Tariff"
 LEGACY_CONF_PEAK_PRICE = "Peak price"
@@ -25,7 +26,8 @@ DEFAULT_UPDATE_INTERVAL_HOUR = 1
 # Local deployment policy: re-fetch a bounded overlap so revised readings can
 # replace provisional values without downloading two weeks of data every hour.
 CONSUMPTION_DATA_DAYS_TO_FETCH = 3
-INITIAL_HISTORY_DAYS = 30
+INITIAL_HISTORY_DAYS = 90
+HISTORY_BACKFILL_VERSION = 1
 
 DAILY_PRICE_CHF = 0.2580  # CHF/kWh
 NIGHTLY_PRICE_CHF = 0.2347  # CHF/kWh

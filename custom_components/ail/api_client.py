@@ -650,12 +650,18 @@ class AILEnergyClient:
         if not self.token:
             raise ValueError("Not logged in. Call login() first")
 
+        def api_timestamp(value: datetime) -> str:
+            """Render the UTC wall time expected by Energy Buddy's API."""
+            if value.tzinfo is not None and value.utcoffset() is not None:
+                value = value.astimezone(timezone.utc)
+            return value.strftime("%Y-%m-%d %H:%M:%S")
+
         payload = {
             "meterID": self._meter_id,
             "scale": "hours",
             "timeFrame": {
-                "from": _from.strftime("%Y-%m-%d %H:%M:%S"),
-                "to": _to.strftime("%Y-%m-%d %H:%M:%S"),
+                "from": api_timestamp(_from),
+                "to": api_timestamp(_to),
             },
             "forceWholeTimeFrame": False,
             "hoursPrecision": True,

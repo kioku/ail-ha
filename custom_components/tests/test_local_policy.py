@@ -35,7 +35,7 @@ def _coordinator(hass) -> EnergyDataUpdateCoordinator:
 def test_history_windows_match_local_policy():
     """Keep API load bounded while retaining a correction overlap."""
     assert CONSUMPTION_DATA_DAYS_TO_FETCH == 3
-    assert INITIAL_HISTORY_DAYS == 30
+    assert INITIAL_HISTORY_DAYS == 90
 
 
 def test_pending_records_are_not_persisted():

@@ -37,6 +37,15 @@ def _get_cost_description():
     raise AssertionError("Cost sensor description not found")
 
 
+def test_interval_energy_sensors_do_not_claim_cumulative_totals():
+    """Latest-interval values must not create misleading recorder sums."""
+    interval_sensors = [
+        item for item in SENSORS if item.key in {"day", "night", "total"}
+    ]
+    assert len(interval_sensors) == 3
+    assert all(item.state_class is None for item in interval_sensors)
+
+
 def test_cost_sensor_uses_fixed_tariff(hass):
     """Fixed tariff should always return peak price."""
     tz = dt_util.get_time_zone("Europe/Zurich")

@@ -1,6 +1,6 @@
 """Tests for timezone handling."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
@@ -62,10 +62,12 @@ def test_sum_hourly_consumptions_uses_local_time(hass):
 
         hourly = coordinator._sum_hourly_consumptions(consumptions)
 
-        night_key = dt_util.as_local(night_base).replace(
-            minute=0, second=0, microsecond=0
+        night_key = dt_util.as_utc(
+            dt_util.as_local(night_base).replace(minute=0, second=0, microsecond=0)
         )
-        day_key = dt_util.as_local(day_base).replace(minute=0, second=0, microsecond=0)
+        day_key = dt_util.as_utc(
+            dt_util.as_local(day_base).replace(minute=0, second=0, microsecond=0)
+        )
 
         assert night_key in hourly
         assert day_key in hourly
@@ -73,6 +75,39 @@ def test_sum_hourly_consumptions_uses_local_time(hass):
         assert hourly[night_key].day == 0.0
         assert hourly[day_key].day == 8.0
         assert hourly[day_key].night == 0.0
+    finally:
+        dt_util.set_default_time_zone(dt_util.UTC)
+
+
+def test_sum_hourly_consumptions_preserves_both_dst_fallback_hours(hass):
+    """The two local 02:00 hours must remain distinct UTC statistic buckets."""
+    tz = dt_util.get_time_zone("Europe/Zurich")
+    dt_util.set_default_time_zone(tz)
+    try:
+        coordinator = _make_coordinator(hass)
+        consumptions = []
+        for base in (
+            datetime(2026, 10, 25, 0, 0, tzinfo=timezone.utc),
+            datetime(2026, 10, 25, 1, 0, tzinfo=timezone.utc),
+        ):
+            for quarter in range(4):
+                start = base + timedelta(minutes=15 * quarter)
+                consumptions.append(
+                    ConsumptionData(
+                        from_date=start,
+                        to_date=start + timedelta(minutes=15),
+                        day=0.25,
+                    )
+                )
+
+        hourly = coordinator._sum_hourly_consumptions(consumptions)
+
+        assert list(hourly) == [
+            datetime(2026, 10, 25, 0, 0, tzinfo=timezone.utc),
+            datetime(2026, 10, 25, 1, 0, tzinfo=timezone.utc),
+        ]
+        assert [value.total for value in hourly.values()] == [1.0, 1.0]
+        assert [value.tickers for value in hourly.values()] == [4, 4]
     finally:
         dt_util.set_default_time_zone(dt_util.UTC)
 

@@ -49,6 +49,8 @@ from .const import (
     LEGACY_CONF_FIXED_TARIFF,
     LEGACY_CONF_PEAK_PRICE,
     LEGACY_CONF_OFF_PEAK_PRICE,
+    CONF_HISTORY_BACKFILL_VERSION,
+    HISTORY_BACKFILL_VERSION,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -144,9 +146,14 @@ class EnergyDataUpdateCoordinator(DataUpdateCoordinator[Optional[ConsumptionData
             get_last_statistics, self.hass, 1, ENERGY_CONSUMPTION_KEY, True, set()
         )
 
-        if not last_stats:
-            _LOGGER.info("No statistics found, fetching historical data")
+        backfill_version = int(self.entry.data.get(CONF_HISTORY_BACKFILL_VERSION, 0))
+        if not last_stats or backfill_version < HISTORY_BACKFILL_VERSION:
+            _LOGGER.info("Fetching bounded historical data repair")
             await self._fetch_historical_data()
+            if backfill_version < HISTORY_BACKFILL_VERSION:
+                new_data = dict(self.entry.data)
+                new_data[CONF_HISTORY_BACKFILL_VERSION] = HISTORY_BACKFILL_VERSION
+                self.hass.config_entries.async_update_entry(self.entry, data=new_data)
         else:
             _LOGGER.info("Statistics already exist, skipping historical data fetch")
 
@@ -315,7 +322,12 @@ class EnergyDataUpdateCoordinator(DataUpdateCoordinator[Optional[ConsumptionData
         use_fixed_tariff, _, _ = self._get_tariff_settings()
         for consumption in consumptions:
             local_from = self._as_local(consumption.from_date)
-            hour_key = local_from.replace(minute=0, second=0, microsecond=0)
+            # UTC is the identity of an elapsed hour. Local wall time is not:
+            # during the autumn DST fold, Europe/Zurich has two distinct 02:00
+            # hours that compare equal as dictionary keys.
+            hour_key = dt_util.as_utc(local_from).replace(
+                minute=0, second=0, microsecond=0
+            )
             if hour_key not in hourly_sums:
                 hourly_sums[hour_key] = ConsumptionData(
                     from_date=hour_key,
@@ -330,7 +342,7 @@ class EnergyDataUpdateCoordinator(DataUpdateCoordinator[Optional[ConsumptionData
                 # https://www.ail.ch/privati/elettricita/servizi/tariffe.html
                 # between 22:00 and 06:00 is considered night (off-peak hours)
                 # between 06:00 and 22:00 is considered day (peak hours)
-                if 22 <= hour_key.hour or hour_key.hour < 6:
+                if 22 <= local_from.hour or local_from.hour < 6:
                     current.night += consumption.day
                 else:
                     current.day += consumption.day
