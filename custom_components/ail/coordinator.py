@@ -259,7 +259,10 @@ class EnergyDataUpdateCoordinator(DataUpdateCoordinator[Optional[ConsumptionData
         Raises:
             ConfigEntryAuthFailed: If authentication fails
         """
-        end_date = dt_util.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        # Re-emit the complete window through the current hour.  Stopping at
+        # midnight would leave existing later sums based on the old truncated
+        # history, producing a discontinuity at the repair boundary.
+        end_date = dt_util.now()
         start_date = end_date - timedelta(days=INITIAL_HISTORY_DAYS)
 
         if not await self.api_client.login():

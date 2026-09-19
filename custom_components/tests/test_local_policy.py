@@ -1,7 +1,7 @@
 """Regression tests for Kioku's explicit local deployment policy."""
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -10,6 +10,7 @@ from custom_components.ail.api_client import AILEnergyClient, ConsumptionRespons
 from custom_components.ail.const import (
     CONSUMPTION_DATA_DAYS_TO_FETCH,
     DOMAIN,
+    HISTORY_BACKFILL_VERSION,
     INITIAL_HISTORY_DAYS,
 )
 from custom_components.ail.coordinator import (
@@ -36,6 +37,22 @@ def test_history_windows_match_local_policy():
     """Keep API load bounded while retaining a correction overlap."""
     assert CONSUMPTION_DATA_DAYS_TO_FETCH == 3
     assert INITIAL_HISTORY_DAYS == 90
+    assert HISTORY_BACKFILL_VERSION == 2
+
+
+async def test_history_repair_rewrites_through_current_time(hass):
+    """The repair must also rebase sums that already exist after midnight."""
+    coordinator = _coordinator(hass)
+    now = datetime(2026, 9, 19, 20, 30, tzinfo=timezone.utc)
+    coordinator.api_client.login = AsyncMock(return_value=True)
+    coordinator._fetch_chunked_data = AsyncMock(return_value={})
+
+    with patch("custom_components.ail.coordinator.dt_util.now", return_value=now):
+        await coordinator._fetch_historical_data()
+
+    coordinator._fetch_chunked_data.assert_awaited_once_with(
+        now - timedelta(days=INITIAL_HISTORY_DAYS), now
+    )
 
 
 def test_pending_records_are_not_persisted():
