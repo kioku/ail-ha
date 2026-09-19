@@ -20,8 +20,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
-from homeassistant.helpers.update_coordinator import UpdateFailed
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
 from .api_client import (
@@ -192,14 +191,12 @@ class EnergyDataUpdateCoordinator(DataUpdateCoordinator[Optional[ConsumptionData
             UpdateFailed: If data cannot be fetched or processed
         """
         try:
-            if not await self.api_client.login():
-                raise ConfigEntryAuthFailed
-            self._persist_session_state()
+            await self._async_login()
             await self._refresh_estimated_breakdown()
             end_date = dt_util.now()
             start_date = end_date - timedelta(days=CONSUMPTION_DATA_DAYS_TO_FETCH)
             all_consumption_data = await self._fetch_chunked_data(start_date, end_date)
-        except ConfigEntryAuthFailed:
+        except (ConfigEntryAuthFailed, UpdateFailed):
             raise
         except Exception as err:
             raise UpdateFailed("AIL update failed") from err
@@ -265,9 +262,7 @@ class EnergyDataUpdateCoordinator(DataUpdateCoordinator[Optional[ConsumptionData
         end_date = dt_util.now()
         start_date = end_date - timedelta(days=INITIAL_HISTORY_DAYS)
 
-        if not await self.api_client.login():
-            raise ConfigEntryAuthFailed
-        self._persist_session_state()
+        await self._async_login()
 
         all_consumption_data = await self._fetch_chunked_data(start_date, end_date)
 
@@ -278,6 +273,18 @@ class EnergyDataUpdateCoordinator(DataUpdateCoordinator[Optional[ConsumptionData
             await self._insert_statistics(all_consumption_data)
         else:
             _LOGGER.warning("No historical consumption data was retrieved")
+
+    async def _async_login(self) -> None:
+        """Authenticate while preserving the distinction between auth and outages."""
+        try:
+            authenticated = await self.api_client.login()
+        except (AILClientError, aiohttp.ClientError, TimeoutError, UnicodeError) as err:
+            raise UpdateFailed("Unable to authenticate with AIL") from err
+
+        if not authenticated:
+            raise ConfigEntryAuthFailed
+
+        self._persist_session_state()
 
     def _persist_session_state(self) -> None:
         """Persist the latest authenticated session to the config entry.
