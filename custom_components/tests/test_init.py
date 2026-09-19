@@ -34,6 +34,9 @@ async def test_async_setup_entry_fetches_history_when_no_stats(hass):
         "custom_components.ail.coordinator.EnergyDataUpdateCoordinator._fetch_chunked_data",
         return_value={},
     ), patch(
+        "custom_components.ail.coordinator.EnergyDataUpdateCoordinator._refresh_estimated_breakdown",
+        new=AsyncMock(),
+    ), patch(
         "custom_components.ail.coordinator.get_instance",
         return_value=_DummyRecorder(),
     ), patch(
@@ -62,6 +65,9 @@ async def test_async_setup_entry_skips_history_when_stats_exist(hass):
         "custom_components.ail.coordinator.EnergyDataUpdateCoordinator._fetch_chunked_data",
         return_value={},
     ), patch(
+        "custom_components.ail.coordinator.EnergyDataUpdateCoordinator._refresh_estimated_breakdown",
+        new=AsyncMock(),
+    ), patch(
         "custom_components.ail.coordinator.get_instance",
         return_value=_DummyRecorder(),
     ), patch(
@@ -89,6 +95,9 @@ async def test_async_unload_entry_closes_client(hass):
     ), patch(
         "custom_components.ail.coordinator.EnergyDataUpdateCoordinator._fetch_chunked_data",
         return_value={},
+    ), patch(
+        "custom_components.ail.coordinator.EnergyDataUpdateCoordinator._refresh_estimated_breakdown",
+        new=AsyncMock(),
     ), patch(
         "custom_components.ail.coordinator.get_instance",
         return_value=_DummyRecorder(),
