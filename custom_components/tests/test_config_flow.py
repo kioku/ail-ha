@@ -154,3 +154,118 @@ async def test_async_step_mfa_closes_client_when_session_is_expired(hass):
     assert result["errors"] == {"base": "mfa_session_expired"}
     assert flow.auth_data is None
     assert flow._auth_client is None
+
+
+@pytest.mark.asyncio
+async def test_reauth_updates_credentials_and_preserves_entry_data(hass):
+    """Successful reauth should replace auth state without losing tariff data."""
+    flow = ConfigFlow()
+    flow.hass = hass
+    flow.context = {}
+    entry = SimpleNamespace(
+        data={
+            CONF_USERNAME: "user@example.com",
+            CONF_PASSWORD: "old-secret",
+            CONF_SESSION_STATE: {"token": "old-token"},
+            "fixed_tariff": True,
+        }
+    )
+
+    async def authenticate(user_input):
+        user_input[CONF_SESSION_STATE] = {
+            "token": "new-token",
+            "meter_id": "1",
+            "cookies": [],
+        }
+
+    with patch.object(flow, "_get_reauth_entry", return_value=entry), patch.object(
+        flow, "_test_credentials", new=AsyncMock(side_effect=authenticate)
+    ), patch.object(
+        flow,
+        "async_update_reload_and_abort",
+        return_value={"type": "abort", "reason": "reauth_successful"},
+    ) as update_entry:
+        await flow.async_step_reauth(entry.data)
+        result = await flow.async_step_reauth_confirm({CONF_PASSWORD: "new-secret"})
+
+    assert result == {"type": "abort", "reason": "reauth_successful"}
+    update_entry.assert_called_once_with(
+        entry,
+        data_updates={
+            CONF_USERNAME: "user@example.com",
+            CONF_PASSWORD: "new-secret",
+            CONF_SESSION_STATE: {
+                "token": "new-token",
+                "meter_id": "1",
+                "cookies": [],
+            },
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_reauth_continues_through_mfa(hass):
+    """Reauth should retain the entry while an MFA challenge is pending."""
+    flow = ConfigFlow()
+    flow.hass = hass
+    flow.context = {}
+    entry = SimpleNamespace(
+        data={
+            CONF_USERNAME: "user@example.com",
+            CONF_PASSWORD: "old-secret",
+        }
+    )
+
+    with patch.object(flow, "_get_reauth_entry", return_value=entry), patch.object(
+        flow, "_test_credentials", new=AsyncMock(side_effect=MFARequired)
+    ), patch.object(
+        flow, "async_step_mfa", new=AsyncMock(return_value={"type": "form"})
+    ) as mfa_step:
+        await flow.async_step_reauth(entry.data)
+        result = await flow.async_step_reauth_confirm({CONF_PASSWORD: "new-secret"})
+
+    assert result == {"type": "form"}
+    assert flow.auth_data == {
+        CONF_USERNAME: "user@example.com",
+        CONF_PASSWORD: "new-secret",
+    }
+    assert flow._reauth_entry is entry
+    mfa_step.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_mfa_completion_finishes_reauth(hass):
+    """A successful MFA submission should update and reload the failed entry."""
+    flow = ConfigFlow()
+    flow.hass = hass
+    flow.context = {}
+    entry = SimpleNamespace(data={CONF_USERNAME: "user@example.com"})
+    flow._reauth_entry = entry
+    flow.auth_data = {
+        CONF_USERNAME: "user@example.com",
+        CONF_PASSWORD: "new-secret",
+    }
+    flow._auth_client = SimpleNamespace(
+        is_mfa_pending=lambda: True,
+        submit_mfa_code=AsyncMock(return_value=True),
+        export_session_state=lambda: {
+            "token": "new-token",
+            "meter_id": "1",
+            "cookies": [],
+        },
+        close=AsyncMock(),
+    )
+
+    with patch.object(
+        flow,
+        "async_update_reload_and_abort",
+        return_value={"type": "abort", "reason": "reauth_successful"},
+    ) as update_entry:
+        result = await flow.async_step_mfa({CONF_MFA_CODE: "123456"})
+
+    assert result == {"type": "abort", "reason": "reauth_successful"}
+    update_entry.assert_called_once()
+    assert (
+        update_entry.call_args.kwargs["data_updates"][CONF_SESSION_STATE]["token"]
+        == "new-token"
+    )

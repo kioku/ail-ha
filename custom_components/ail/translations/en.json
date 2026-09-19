@@ -16,6 +16,13 @@
           "mfa_code": "Verification code"
         }
       },
+      "reauth_confirm": {
+        "title": "Reconnect AIL EnergyBuddy",
+        "description": "Your AIL session expired. Enter the password for {username}; an email verification code may also be required.",
+        "data": {
+          "password": "Password"
+        }
+      },
       "tariff": {
         "title": "Energy Tariff Configuration",
         "description": "Configure your electricity tariff settings. If you enable fixed tariff, you'll need to enter your peak (day) and off-peak (night) rates in CHF/kWh. Default values are set according to AIL standard rates.",

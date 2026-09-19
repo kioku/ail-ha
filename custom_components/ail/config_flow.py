@@ -33,6 +33,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Initialize the config flow."""
         self.auth_data = None
         self._auth_client = None
+        self._reauth_entry = None
 
     async def async_step_user(
         self, user_input: dict[str, any] | None = None
@@ -127,6 +128,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         self._auth_client.export_session_state()
                     )
                     await self._close_auth_client()
+                    if self._reauth_entry is not None:
+                        return self._finish_reauth()
                     return await self.async_step_tariff()
             except InvalidAuth:
                 errors["base"] = "invalid_mfa_code"
@@ -139,6 +142,65 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="mfa",
             data_schema=schema,
             errors=errors,
+        )
+
+    async def async_step_reauth(self, entry_data: dict[str, Any]) -> FlowResult:
+        """Start reauthentication for an entry whose AIL session expired."""
+        del entry_data
+        self._reauth_entry = self._get_reauth_entry()
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Validate replacement credentials without changing tariff settings."""
+        errors = {}
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_PASSWORD): selector.TextSelector(
+                    selector.TextSelectorConfig(
+                        type=selector.TextSelectorType.PASSWORD,
+                    ),
+                )
+            }
+        )
+
+        if user_input is not None:
+            await self._close_auth_client()
+            self.auth_data = {
+                CONF_USERNAME: self._reauth_entry.data[CONF_USERNAME],
+                CONF_PASSWORD: user_input[CONF_PASSWORD],
+            }
+            try:
+                await self._test_credentials(self.auth_data)
+                return self._finish_reauth()
+            except CannotConnect:
+                errors["base"] = "cannot_connect"
+            except InvalidAuth:
+                errors["base"] = "invalid_auth"
+            except MFARequired:
+                return await self.async_step_mfa()
+            except Exception:  # pylint: disable=broad-except
+                errors["base"] = "unknown"
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=schema,
+            description_placeholders={
+                "username": self._reauth_entry.data[CONF_USERNAME]
+            },
+            errors=errors,
+        )
+
+    def _finish_reauth(self) -> FlowResult:
+        """Persist only refreshed credentials and reload the existing entry."""
+        return self.async_update_reload_and_abort(
+            self._reauth_entry,
+            data_updates={
+                CONF_USERNAME: self.auth_data[CONF_USERNAME],
+                CONF_PASSWORD: self.auth_data[CONF_PASSWORD],
+                CONF_SESSION_STATE: self.auth_data[CONF_SESSION_STATE],
+            },
         )
 
     async def async_step_tariff(
