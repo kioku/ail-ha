@@ -106,6 +106,7 @@ async def test_async_step_user_closes_stale_mfa_client_before_new_login(hass):
     """A new login attempt should close any previous pending MFA client."""
     flow = ConfigFlow()
     flow.hass = hass
+    flow.context = {}
     stale_client = SimpleNamespace(close=AsyncMock())
     flow._auth_client = stale_client
     flow.auth_data = {

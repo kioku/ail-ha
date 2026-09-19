@@ -27,7 +27,7 @@ from .const import (
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for My Integration."""
 
-    VERSION = 1
+    VERSION = 2
 
     def __init__(self):
         """Initialize the config flow."""
@@ -61,6 +61,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             await self._close_auth_client()
             self.auth_data = None
             try:
+                await self.async_set_unique_id(
+                    user_input[CONF_USERNAME].strip().casefold()
+                )
+                self._abort_if_unique_id_configured()
                 # Validate the credentials here if possible
                 await self._test_credentials(user_input)
 

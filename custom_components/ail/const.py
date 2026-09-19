@@ -22,7 +22,10 @@ ENERGY_CONSUMPTION_COST_NIGHT_KEY = f"{DOMAIN}:energy_night_consumption_cost"
 
 # Update interval
 DEFAULT_UPDATE_INTERVAL_HOUR = 1
-CONSUMPTION_DATA_DAYS_TO_FETCH = 14
+# Local deployment policy: re-fetch a bounded overlap so revised readings can
+# replace provisional values without downloading two weeks of data every hour.
+CONSUMPTION_DATA_DAYS_TO_FETCH = 3
+INITIAL_HISTORY_DAYS = 30
 
 DAILY_PRICE_CHF = 0.2580  # CHF/kWh
 NIGHTLY_PRICE_CHF = 0.2347  # CHF/kWh

@@ -12,12 +12,14 @@ from homeassistant.components.recorder.models import (
 from homeassistant.components.recorder.statistics import (
     async_add_external_statistics,
     get_last_statistics,
+    statistics_during_period,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.util import dt as dt_util
 
 from .api_client import AILEnergyClient, ConsumptionResponse
@@ -29,6 +31,7 @@ from .const import (
     ENERGY_CONSUMPTION_KEY,
     DEFAULT_UPDATE_INTERVAL_HOUR,
     CONSUMPTION_DATA_DAYS_TO_FETCH,
+    INITIAL_HISTORY_DAYS,
     DAILY_PRICE_CHF,
     NIGHTLY_PRICE_CHF,
     ENERGY_CONSUMPTION_COST_DAY_KEY,
@@ -76,9 +79,13 @@ class ConsumptionData:
             List of ConsumptionData objects
         """
         statistics = []
-        for record in data.response:
+        for record in sorted(data.response, key=lambda item: item.from_):
             # Skip records with no readings
-            if record.readings_count is not None and record.readings_count > 0:
+            if (
+                not record.is_pending
+                and record.readings_count is not None
+                and record.readings_count > 0
+            ):
                 statistics.append(
                     cls(
                         day=record.day,
@@ -146,18 +153,13 @@ class EnergyDataUpdateCoordinator(DataUpdateCoordinator[Optional[ConsumptionData
         while chunk_start < end_date:
             chunk_end = min(chunk_start + chunk_size, end_date)
             _LOGGER.debug("Fetching data from %s to %s", chunk_start, chunk_end)
-            try:
-                response = await self.api_client.get_consumption_data(
-                    chunk_start, chunk_end
-                )
-                consumption_data = ConsumptionData.from_api_response(response)
-                hourly_data = self._sum_hourly_consumptions(consumption_data)
-                _LOGGER.debug("Found %d hourly records", len(hourly_data))
-                all_consumption_data.update(hourly_data)
-            except Exception as err:
-                _LOGGER.error(
-                    "Error fetching chunk %s to %s: %s", chunk_start, chunk_end, err
-                )
+            response = await self.api_client.get_consumption_data(
+                chunk_start, chunk_end
+            )
+            consumption_data = ConsumptionData.from_api_response(response)
+            hourly_data = self._sum_hourly_consumptions(consumption_data)
+            _LOGGER.debug("Found %d hourly records", len(hourly_data))
+            all_consumption_data.update(hourly_data)
             chunk_start = chunk_end
         return all_consumption_data
 
@@ -171,13 +173,17 @@ class EnergyDataUpdateCoordinator(DataUpdateCoordinator[Optional[ConsumptionData
             ConfigEntryAuthFailed: If authentication fails
             UpdateFailed: If data cannot be fetched or processed
         """
-        if not await self.api_client.login():
-            raise ConfigEntryAuthFailed
-        self._persist_session_state()
-
-        end_date = dt_util.now()
-        start_date = end_date - timedelta(days=CONSUMPTION_DATA_DAYS_TO_FETCH)
-        all_consumption_data = await self._fetch_chunked_data(start_date, end_date)
+        try:
+            if not await self.api_client.login():
+                raise ConfigEntryAuthFailed
+            self._persist_session_state()
+            end_date = dt_util.now()
+            start_date = end_date - timedelta(days=CONSUMPTION_DATA_DAYS_TO_FETCH)
+            all_consumption_data = await self._fetch_chunked_data(start_date, end_date)
+        except ConfigEntryAuthFailed:
+            raise
+        except Exception as err:
+            raise UpdateFailed("AIL update failed") from err
 
         if not all_consumption_data:
             _LOGGER.warning("No consumption data received from API")
@@ -198,7 +204,7 @@ class EnergyDataUpdateCoordinator(DataUpdateCoordinator[Optional[ConsumptionData
             ConfigEntryAuthFailed: If authentication fails
         """
         end_date = dt_util.now().replace(hour=0, minute=0, second=0, microsecond=0)
-        start_date = end_date - timedelta(days=90)  # last 3 months
+        start_date = end_date - timedelta(days=INITIAL_HISTORY_DAYS)
 
         if not await self.api_client.login():
             raise ConfigEntryAuthFailed
@@ -366,30 +372,23 @@ class EnergyDataUpdateCoordinator(DataUpdateCoordinator[Optional[ConsumptionData
             statistic_id: The statistic ID to use
             name: The display name for the statistic
         """
-        # Get last statistics time in a single query
-        last_stat = await get_instance(self.hass).async_add_executor_job(
-            get_last_statistics, self.hass, 1, statistic_id, True, {"sum"}
+        first_hour = dt_util.as_utc(min(consumptions))
+        preceding = await get_instance(self.hass).async_add_executor_job(
+            statistics_during_period,
+            self.hass,
+            first_hour - timedelta(days=1),
+            first_hour,
+            {statistic_id},
+            "hour",
+            None,
+            {"sum"},
         )
-
-        last_stats_time = (
-            last_stat[statistic_id][0]["start"]
-            if last_stat and statistic_id in last_stat
-            else None
-        )
-
-        sum_value = (
-            last_stat[statistic_id][0]["sum"]
-            if last_stat and statistic_id in last_stat
-            else 0.0
-        )
+        prior_rows = preceding.get(statistic_id, [])
+        sum_value = prior_rows[-1]["sum"] if prior_rows else 0.0
         statistics = []
 
         # Prepare statistics for each hour
-        for hour, consumption in consumptions.items():
-            # Skip hours that are already processed
-            if last_stats_time and hour.timestamp() <= last_stats_time:
-                continue
-
+        for hour, consumption in sorted(consumptions.items()):
             value = getattr(consumption, data_type)
             sum_value += value
             statistics.append(

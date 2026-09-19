@@ -1,7 +1,6 @@
 import logging
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Callable, Optional
+from typing import Callable
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -107,6 +106,8 @@ class EnergySensor(CoordinatorEntity[EnergyDataUpdateCoordinator], SensorEntity)
         """Initialize the sensor."""
         super().__init__(coordinator)
         self.entity_description = description
+        # Preserve the legacy IDs. Config-flow uniqueness guarantees that only
+        # one account can own these global entity/statistic identifiers.
         self._attr_unique_id = f"{DOMAIN}_energy_{description.key}"
         self._attr_name = description.name
         self._attr_state_class = description.state_class
@@ -132,10 +133,3 @@ class EnergySensor(CoordinatorEntity[EnergyDataUpdateCoordinator], SensorEntity)
         if self.entity_description.key == "cost":
             return self.coordinator.get_current_price(self.coordinator.data.from_date)
         return self.entity_description.value_fn(self.coordinator.data)
-
-    @property
-    def last_reset(self) -> Optional[datetime]:
-        """Return the time when the sensor was last reset, if any."""
-        if not self.coordinator.data:
-            return None
-        return self.coordinator.data.from_date
